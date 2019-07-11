@@ -1,0 +1,138 @@
+failat 21
+
+; debug
+; requestchoice >env:dbug title="debug" body="1. create assign" gadgets=OK
+
+; save current path
+cd >env:currentp
+
+; creating temporary ASSIGN
+assign current: "${currentp}"
+assign sysdest: "${INSTALLEDSYS}"
+
+ ; verify extras
+  if not exists sysdest:prefs/env-archive/EXTRASPATH
+  ; that's strange. You haven't practically installed Icaros Desktop at all. So
+  ; let me disable all ICAROS features, or you'll mess up everything at startup.
+  delete sysdest:S/user-startup >NIL:
+  delete sysdest:S/icaros-sequence >NIL:
+  skip FINE
+ endif
+  
+
+assign extrasdest: "${INSTALLEDEXTRAS}"
+assign othdest: "${INSTALLEDEXTRAS}//"
+
+ if not exists sysdest:prefs/env-archive/DEVELPATH
+   cd othdest:
+   makedir Development
+   cd Development
+   cd >sysdest:prefs/env-archive/DEVELPATH
+   cd current:
+ EndIF
+
+assign devdest: "${sysdest:prefs/env-archive/DEVELPATH}"
+assign lua: devdest:Lua DEFER
+
+; copy necessary development stuff
+ if not exists devdest:bin.zip
+    copy SYS:Development/bin.zip TO devdest: NOPRO QUIET
+    copy SYS:Development/Lua.zip TO devdest: NOPRO QUIET
+    copy SYS:Development/S.zip TO devdest: NOPRO QUIET
+    makedir devdest:etc
+    makedir devdest:lib
+    makedir devdest:include
+    copy sys:prefs/env-archive/SYS/Packages/developer TO sysdest:prefs/env-archive/SYS/Packages NOPRO QUIET
+ EndIf
+
+; unpack everything in Extras
+
+  ; create a variable for each zip file included in extras.
+  cd extrasdest:
+  if NOT exists env:icaros/icinstall
+    makedir env:icaros/icinstall
+  EndIf
+  list #?.zip NOHEAD FILES LFORMAT="echo True >*"env:icaros/icinstall/%M*"" >T:P
+  execute T:P
+
+requestchoice >env:dbug title="Installing Extra Software" body="Icaros Desktop will now unpack compressed software*Nand develoment stuff. It will take a while and installer*Nwill appear frozen. Please click OK and wait faithfully." gadgets=OK
+
+; -------------------------------------------------------------
+; any package selector script must be placed here.
+; -------------------------------------------------------------
+
+  ; unpack files
+  list #?.zip NOHEAD FILES LFORMAT="IF ${env:icaros/icinstall/%M} EQ True*N unzip -o %N*NEndIf" >T:P
+  execute T:P
+  
+  ; delete zip files
+  delete #?.zip QUIET
+
+; back to current directory
+cd current:
+
+makedir sysdest:Prefs/Env-Archive/icaros/icinstall
+copy env:icaros/icinstall TO sysdest:Prefs/Env-Archive/icaros/icinstall ALL QUIET
+
+; debug
+; requestchoice >env:dbug title="debug" body="2. create buffer-add in s" gadgets=OK
+
+; change buffer-add script in S:
+Eval `Avail TOTAL` / 100000 >env:buffers
+echo "AddBuffers ${INSTALLEDSYS} ${buffers} >NIL:" >sysdest:S/buffer-add
+
+; debug
+; more sysdest:S/buffer-add
+; requestchoice >env:dbug title="debug" body="3. set 1sttime and system icon" gadgets=OK
+
+; it will be the first run for your installation
+echo "True" >sysdest:Prefs/Env-Archive/Icaros/1sttime
+
+; copy the nice system icon
+copy sys:storage/icons/AROS.info sysdest:disk.info QUIET NOPRO FOOVR
+
+; create L drawer
+makedir sysdest:L
+
+; debug
+; requestchoice >env:dbug title="debug" body="4. verify development" gadgets=OK
+
+; unpack development stuff
+
+ cd devdest:
+ list #?.zip NOHEAD FILES LFORMAT="unzip -o %N" >T:R
+ execute T:R
+ delete #?.zip QUIET
+
+; back to current directory
+cd current:
+
+; debug
+; requestchoice >env:dbug title="debug" body="6. create MyWorkspace" gadgets=OK
+
+; create MyWorkspace directory on same drive as extras
+
+ cd othdest:
+ makedir MyWorkspace
+ copy sys:Storage/MyWorkspace.info TO othdest: QUIET FOOVR
+ copy sys:Storage/MyWorkspace TO MyWorkspace/ ALL QUIET FOOVR
+ copy sys:adstuff TO MyWorkspace/ ALL QUIET FOOVR
+  if not exists .backdrop
+   touch .backdrop
+  endif
+ lua:lua S:replacer.lua .backdrop ":MyWorkspace" "" 
+ echo ":MyWorkspace" >>.backdrop
+ cd >sysdest:Prefs/env-archive/Icaros/MYPATH
+
+; debug
+; requestchoice >env:dbug title="debug" body="7. create work icon, if work exists" gadgets=OK
+
+; copy the nice work icon, but only if work exists
+echo ":" >>env:INSTALLEDWORK
+if ${INSTALLEDWORK} NOT EQ ":"
+ assign workdest: ${INSTALLEDWORK}
+ copy sys:storage/icons/Work.info workdest:disk.info QUIET NOPRO FOOVR
+endif
+
+lab FINE
+; end of script

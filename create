@@ -1,0 +1,4 @@
+If NOT exists ENV:icaros/icinstall
+	makedir ENV:icaros/icinstall
+EndIf
+copy MyWorkspace:devel/jman/paolo/icinstall ENV:icaros/icinstall ALL
