@@ -8,6 +8,8 @@ I think it looked like something like this:
 
 ![screenshot](install-mockup.jpg)
 
+Included also a metamake file (`mmakefile.src`) to compile from AROS sources directory.
+
 ### Learn more
 
 Aros: http://www.aros.org

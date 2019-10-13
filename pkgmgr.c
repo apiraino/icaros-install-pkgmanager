@@ -90,7 +90,7 @@ exit_t retrieveDesc(FILE *fp, char *fname, char **ris)
 {
     char *pkgdesc;
     char pkgdesc_content[MAX_PKGDESC_CONTENT];
-    pkgdesc_content[0]      = '\0';
+    pkgdesc_content[0] = '\0';
 
     // Retrieve the description file
     // "Extras:/" + ep->d_name + ".desc" + 1
@@ -101,9 +101,12 @@ exit_t retrieveDesc(FILE *fp, char *fname, char **ris)
     }
     pkgdesc[0] = '\0';
 
-    strncat(pkgdesc, PKGDESC, strlen(PKGDESC));
-    strncat(pkgdesc, fname, strlen(fname));
-    strncat(pkgdesc, ".desc", strlen(".desc"));
+    int _l = strlen(pkgdesc) + strlen(PKGDESC) + 1;
+    strncat(pkgdesc, PKGDESC, _l);
+    _l = strlen(pkgdesc) + strlen(fname) + 1;
+    strncat(pkgdesc, fname, _l);
+    _l = strlen(pkgdesc) + strlen(".desc") + 1;
+    strncat(pkgdesc, ".desc", _l);
 
     // Trim newline
     if (pkgdesc[strlen(pkgdesc) - 1] == '\n')
@@ -113,7 +116,7 @@ exit_t retrieveDesc(FILE *fp, char *fname, char **ris)
     {
         if (NULL == (fp = fopen(pkgdesc, "r")))
         {
-            printf("Failed opening file %s, error: %d\n", pkgdesc, errno);
+            printf("Failed opening description file %s, error: %d\n", pkgdesc, errno);
             return EXIT_FAILURE;
         }
 
@@ -121,28 +124,27 @@ exit_t retrieveDesc(FILE *fp, char *fname, char **ris)
         line[0] = '\0';
         while(NULL != fgets(line, sizeof(line), fp))
         {
-            if (';' == line[0])
+            if (';' == line[0] || '\n' == line[0])
                 continue;
-            strncat(pkgdesc_content, line, strlen(line));
+            int _l = strlen(pkgdesc_content) + strlen(line) + 1;
+            // strncat(*ris, line, _l);
+            strncat(pkgdesc_content, line, _l);
         }
+        if (pkgdesc_content[strlen(pkgdesc_content) - 1] == '\n')
+            pkgdesc_content[strlen(pkgdesc_content) - 1] = '\0';
 
+        // FIXME: possible leak
+        *ris = strdup(pkgdesc_content);
+        // printf("\n[%d] ris is: '%s'", strlen(*ris), *ris);
         fclose(fp); fp = NULL;
-
-        if (NULL == (*ris = malloc( strlen(pkgdesc_content) * sizeof(char *))))
-        {
-            printf("malloc failed\n");
-            return EXIT_FAILURE;
-        }
-        *ris    = pkgdesc_content;
     }
     else
     {
         // Could not find .desc file, will put the filename instead
-        *ris    = malloc( strlen(fname) * sizeof(char *));
-        *ris    = fname;
+        *ris = fname;
     }
 
-    pkgdesc = NULL; free(pkgdesc);
+    free(pkgdesc); pkgdesc = NULL;
     return EXIT_SUCCESS;
 }
 
@@ -189,11 +191,13 @@ exit_t populateList(char *path, Object *grp)
         printf("Error allocating memory for list!\n");
         return EXIT_FAILURE;
     }
-    file_list->_filename    = NULL;
-    file_list->_next                = NULL;
-    struct listItems *w             = file_list;
-    char *_true                             = "True"; // expected content of file in order to tick the checkbox
-    char *_tmpdesc;
+    file_list->_filename = NULL;
+    file_list->_next = NULL;
+    struct listItems *w = file_list;
+    char *_true = "True"; // expected content of file in order to tick the checkbox
+    char *_tmpdesc = malloc(MAX_PKGDESC_CONTENT);
+    memset(_tmpdesc, 0, MAX_PKGDESC_CONTENT);
+    // _tmpdesc[0] = '\0';
 
     errno = 0;
     dp = opendir ((char *)path);
@@ -204,13 +208,13 @@ exit_t populateList(char *path, Object *grp)
         switch(errno)
         {
         case EACCES:    errmsg  = "Permission denied."; break;
-        case EBADF:             errmsg  = "fd is not a valid file descriptor opened for reading."; break;
+        case EBADF:     errmsg  = "fd is not a valid file descriptor opened for reading."; break;
         case EMFILE:    errmsg  = "Too many file descriptors in use by process."; break;
         case ENFILE:    errmsg  = "Too many files are currently open in the system."; break;
         case ENOENT:    errmsg  = "Directory does not exist, or name is an empty string."; break;
         case ENOMEM:    errmsg  = "Insufficient memory to complete the operation."; break;
         case ENOTDIR:   errmsg  = "name is not a directory."; break;
-            // default considered harmful
+        // default considered harmful
         }
 
         printf("Could not open directory:\n%s\n", errmsg);
@@ -222,6 +226,7 @@ exit_t populateList(char *path, Object *grp)
         // scan dir
         while (NULL != (ep = readdir (dp)))
         {
+             _tmpdesc[0] = '\0';
             // printf("name=%s, reclen=%d, type=%d\n", ep->d_name, ep->d_reclen, ep->d_type);
             // If file is a regular file, open and read content
             if (DT_REG == ep->d_type)
@@ -235,21 +240,25 @@ exit_t populateList(char *path, Object *grp)
                 }
                 filename[0] = '\0';
 
-                strncat(filename, path, strlen(path));
-                strncat(filename, ep->d_name, strlen(ep->d_name));
+                int _l = strlen(filename) + strlen(path) + 1;
+                strncat(filename, path, _l);
+                _l = strlen(filename) + strlen(ep->d_name) + 1;
+                strncat(filename, ep->d_name, _l);
                 // Is file accessible?
                 if (-1 != access(filename, F_OK|R_OK|W_OK))
                 {
                     if (NULL == (fp = fopen(filename, "r")))
                     {
-                        printf("Failed opening file %s, error: %d\n", filename, errno);
+                        printf("Failed opening pkg file: '%s', error: %d\n", filename, errno);
                         return EXIT_FAILURE;
                     }
+
+                    // printf("\nWill retrieve desc from path='%s'", filename);
 
                     int s = strlen(filename);
                     if (NULL == fgets(str, s, fp))
                     {
-                        printf("Failed reading file '%s', error: %d\n", filename, errno);
+                        printf("Failed reading pkg file: '%s', error: %d\n", filename, errno);
                         fclose(fp); fp = NULL;
                         return EXIT_FAILURE;
                     }
@@ -261,44 +270,47 @@ exit_t populateList(char *path, Object *grp)
                     fclose(fp); fp = NULL;
                     fp = NULL;
 
-                    if (EXIT_FAILURE == retrieveDesc(fp, ep->d_name, &_tmpdesc))
+                    // printf("\nWill retrieve desc for file '%s'", ep->d_name);
+                    // FIXME: possible leak
+                    char *file_entry = strdup(ep->d_name);
+                    if (EXIT_FAILURE == retrieveDesc(fp, file_entry, &_tmpdesc))
                     {
                         printf("Bad error occurred while retrieving package description\n");
                         return EXIT_FAILURE;
                     }
+                    // printf("\nDesc for '%s' is='%s'", file_entry, _tmpdesc);
 
                     // List is not empty, allocate and populate an additional item
                     if (NULL != file_list->_filename)
                     {
                         struct listItems *l;
                         l = malloc(sizeof(struct listItems));
-                        l->_filename    = strdup(ep->d_name);
+                        l->_filename = strdup(ep->d_name);
 
                         if (0 == strncmp(_true, str, strlen(str)))
-                            l->_value       = 1;
+                            l->_value = 1;
                         else
-                            l->_value       = 0;
+                            l->_value = 0;
 
                         if (0 != strlen(_tmpdesc))
-                            l->_pkgdesc             = strdup(_tmpdesc);
+                            l->_pkgdesc = strdup(_tmpdesc);
                         else
-                            l->_pkgdesc             = l->_filename;
+                            l->_pkgdesc = l->_filename;
 
-                        file_list->_next        = l;
-                        l->_next                        = NULL;
-                        file_list                       = file_list->_next;
+                        file_list->_next = l;
+                        l->_next = NULL;
+                        file_list = file_list->_next;
                     }
                     else
                     {
                         // List is empty, populate first item
-                        file_list->_filename    = strdup(ep->d_name);
-                        file_list->_pkgdesc             = strdup(_tmpdesc);
+                        file_list->_filename = strdup(ep->d_name);
+                        file_list->_pkgdesc = strdup(_tmpdesc);
                         if (0 == strncmp(_true, str, strlen(str)))
-                            file_list->_value       = 1;
+                            file_list->_value = 1;
                         else
-                            file_list->_value       = 0;
+                            file_list->_value = 0;
                     }
-
                 }
                 else
                 {
@@ -306,7 +318,10 @@ exit_t populateList(char *path, Object *grp)
                 }
             }
         }
-        ris     = EXIT_SUCCESS;
+        _tmpdesc = NULL; free(_tmpdesc);
+        // FIXME: this crashes everything, is the deallocation correct?
+        // free(_tmpdesc); _tmpdesc = NULL;
+        ris = EXIT_SUCCESS;
         (void) closedir (dp);
     }
     else
@@ -402,7 +417,7 @@ HOOKPROTONHNO(saveSetupClick, void, APTR *data)
     FILE *fp;
     Object *item;
 
-    struct listCheckboxes *items    = save_globalListCheckboxes;
+    struct listCheckboxes *items = save_globalListCheckboxes;
     while (NULL != items)
     {
         item    = items->item;
@@ -414,15 +429,17 @@ HOOKPROTONHNO(saveSetupClick, void, APTR *data)
             filename        = (char *)XGET(item, MUIA_ObjectID);
             isSelected      = XGET(item, MUIA_Selected);
 
-            file_path               = malloc(strlen(filename)+strlen(PKGPATH)+1 * sizeof(char));
+            file_path       = malloc(strlen(filename)+strlen(PKGPATH)+1 * sizeof(char));
             file_path[0]    = '\0';
-            strncat(file_path, PKGPATH, strlen(PKGPATH));
-            strncat(file_path, filename, strlen(filename));
+            int _l = strlen(file_path) + strlen(PKGPATH) + 1;
+            strncat(file_path, PKGPATH, _l);
+            _l = strlen(file_path) + strlen(filename) + 1;
+            strncat(file_path, filename, _l);
 
             errno   = 0;
             if (NULL == (fp = fopen(file_path, "w")))
             {
-                printf("Failed opening file %s, error: %d\n", filename, errno);
+                printf("Failed opening file in GUI: '%s', error: %d\n", filename, errno);
             }
             else
             {
@@ -433,7 +450,7 @@ HOOKPROTONHNO(saveSetupClick, void, APTR *data)
                 fclose(fp); fp = NULL;
             }
 
-            file_path       = NULL; free(file_path);
+            free(file_path); file_path = NULL;
             fp = NULL;
         }
 
